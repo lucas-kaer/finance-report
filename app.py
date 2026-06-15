@@ -766,9 +766,48 @@ def highlight_class(value):
         return 'highlight-negative'
     return 'highlight-neutral'
 
+# ===================== 密码验证 =====================
+def check_password():
+    """密码验证门禁"""
+    # 尝试从 Streamlit Secrets 读取密码（部署到云端时使用）
+    # 如果没设置，使用本地默认密码
+    correct_password = st.secrets.get("app_password", "123456")
+    
+    # 如果 session 中已验证通过，直接放行
+    if st.session_state.get("password_verified", False):
+        return True
+    
+    st.markdown(f"""
+    <div style="display:flex;justify-content:center;align-items:center;min-height:80vh;">
+        <div style="background:white;padding:3rem;border-radius:20px;box-shadow:0 20px 60px rgba(0,0,0,0.1);text-align:center;max-width:420px;width:100%;">
+            <div style="font-size:3rem;margin-bottom:1rem;">🔒</div>
+            <h2 style="color:#1a1a2e;margin-bottom:0.5rem;">财务分析报告</h2>
+            <p style="color:#888;margin-bottom:2rem;">请输入密码后查看报告</p>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    # 用 columns 居中输入框
+    col1, col2, col3 = st.columns([1, 2, 1])
+    with col2:
+        with st.container():
+            password = st.text_input("密码", type="password", label_visibility="collapsed", placeholder="请输入访问密码")
+            if password:
+                if password == correct_password:
+                    st.session_state["password_verified"] = True
+                    st.rerun()
+                else:
+                    st.error("❌ 密码错误，请重试")
+    
+    return False
+
 # ===================== 主页面 =====================
 def main():
     load_css()
+    
+    # 密码验证
+    if not check_password():
+        return
     
     # 侧边栏配置
     with st.sidebar:

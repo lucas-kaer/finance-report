@@ -23,3 +23,6 @@ Thumbs.db
 .env
 venv/
 .venv/
+
+# Secrets (本地密码配置不提交到 GitHub)
+.streamlit/secrets.toml
