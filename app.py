@@ -9,6 +9,8 @@ import plotly.express as px
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 from datetime import datetime
+import json
+import os
 import warnings
 warnings.filterwarnings('ignore')
 
@@ -384,6 +386,23 @@ def load_all_data(sales_path, profit_path, expense_path):
         results['error'] = str(e)
     
     return results
+
+@st.cache_data(ttl=3600)
+def load_preloaded_data():
+    """从 preloaded_data.json 加载预计算数据（无需上传Excel）"""
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    json_path = os.path.join(script_dir, 'preloaded_data.json')
+    with open(json_path, 'r', encoding='utf-8') as f:
+        data = json.load(f)
+    
+    # 将列表转换回DataFrame（保持与 calculate_indicators 输出格式一致）
+    for key in ['customer_top5', 'supplier_top5', 'product_top5', 
+                'salesperson_top5', 'expense_summary', 'person_expense_top5',
+                'monthly_trend']:
+        if key in data and isinstance(data[key], list):
+            data[key] = pd.DataFrame(data[key])
+    
+    return data
 
 def calculate_indicators(data):
     """计算所有分析指标"""
@@ -821,33 +840,46 @@ def main():
         
         st.divider()
         
-        st.markdown("### 📁 上传数据文件")
-        
-        st.markdown(
-            '<div style="font-size:0.85rem;color:#666;margin-bottom:0.5rem;">请上传以下3个Excel文件：</div>',
-            unsafe_allow_html=True
+        # 数据来源选择
+        st.markdown("### 📂 数据来源")
+        data_source = st.radio(
+            "选择数据方式",
+            ["📦 预加载数据（无需上传）", "📁 上传新数据文件"],
+            key="data_source",
+            label_visibility="collapsed"
         )
+        use_preload = "预加载" in data_source
         
-        sales_file = st.file_uploader(
-            "① 销售数据（医化4部销售数据.xlsx）", 
-            type=['xlsx'],
-            key="sales"
-        )
-        profit_file = st.file_uploader(
-            "② 利润核算单（单票利润核算单.xlsx）", 
-            type=['xlsx'],
-            key="profit"
-        )
-        expense_file = st.file_uploader(
-            "③ 费用明细（医化4部费用明细.xlsx）", 
-            type=['xlsx'],
-            key="expense"
-        )
-        
-        all_uploaded = all([sales_file, profit_file, expense_file])
-        
-        if all_uploaded:
-            st.success("✅ 3个文件已全部上传")
+        if use_preload:
+            st.info("✅ 使用内置预加载数据，直接查看报告")
+        else:
+            st.markdown("### 📁 上传数据文件")
+            
+            st.markdown(
+                '<div style="font-size:0.85rem;color:#666;margin-bottom:0.5rem;">请上传以下3个Excel文件：</div>',
+                unsafe_allow_html=True
+            )
+            
+            sales_file = st.file_uploader(
+                "① 销售数据（医化4部销售数据.xlsx）", 
+                type=['xlsx'],
+                key="sales"
+            )
+            profit_file = st.file_uploader(
+                "② 利润核算单（单票利润核算单.xlsx）", 
+                type=['xlsx'],
+                key="profit"
+            )
+            expense_file = st.file_uploader(
+                "③ 费用明细（医化4部费用明细.xlsx）", 
+                type=['xlsx'],
+                key="expense"
+            )
+            
+            all_uploaded = all([sales_file, profit_file, expense_file])
+            
+            if all_uploaded:
+                st.success("✅ 3个文件已全部上传")
         
         st.divider()
         
@@ -883,35 +915,45 @@ def main():
     </div>
     """, unsafe_allow_html=True)
     
-    # 检查文件是否已上传
-    if not all_uploaded:
-        st.info("👈 请在左侧侧边栏上传3个Excel文件后，报告将自动生成。")
-        
-        st.markdown("""
-        <div style="text-align:center;padding:3rem 1rem;background:white;border-radius:16px;border:2px dashed #c3cfe2;">
-            <div style="font-size:3rem;margin-bottom:1rem;">📂</div>
-            <h3 style="color:#333;">等待数据上传</h3>
-            <p style="color:#888;">请上传以下3个Excel底稿文件：</p>
-            <div style="display:inline-block;text-align:left;color:#666;line-height:2;">
-                📄 <strong>医化4部销售数据.xlsx</strong>（含当年和上年sheet）<br>
-                📄 <strong>单票利润核算单.xlsx</strong>（含单票利润sheet）<br>
-                📄 <strong>医化4部费用明细.xlsx</strong>（含费用分类、当年、上年sheet）
+    # 检查文件是否已上传（仅非预加载模式需要）
+    if not use_preload:
+        if not all_uploaded:
+            st.info("👈 请在左侧侧边栏上传3个Excel文件后，报告将自动生成。")
+            
+            st.markdown("""
+            <div style="text-align:center;padding:3rem 1rem;background:white;border-radius:16px;border:2px dashed #c3cfe2;">
+                <div style="font-size:3rem;margin-bottom:1rem;">📂</div>
+                <h3 style="color:#333;">等待数据上传</h3>
+                <p style="color:#888;">请上传以下3个Excel底稿文件：</p>
+                <div style="display:inline-block;text-align:left;color:#666;line-height:2;">
+                    📄 <strong>医化4部销售数据.xlsx</strong>（含当年和上年sheet）<br>
+                    📄 <strong>单票利润核算单.xlsx</strong>（含单票利润sheet）<br>
+                    📄 <strong>医化4部费用明细.xlsx</strong>（含费用分类、当年、上年sheet）
+                </div>
             </div>
-        </div>
-        """, unsafe_allow_html=True)
-        return
+            """, unsafe_allow_html=True)
+            return
     
-    # 加载数据
+    # 加载数据（预加载模式 vs 上传模式）
     with st.spinner('正在读取并分析数据...'):
-        data = load_all_data(sales_file, profit_file, expense_file)
-    
-    if not data['success']:
-        st.error(f"❌ 数据加载失败：{data.get('error', '未知错误')}")
-        st.info("💡 请检查上传的Excel文件格式是否正确，确认包含所需的sheet名称。")
-        return
-    
-    # 计算指标
-    indicators = calculate_indicators(data)
+        if use_preload:
+            try:
+                indicators = load_preloaded_data()
+            except FileNotFoundError:
+                st.error("❌ 未找到预加载数据文件（preloaded_data.json）")
+                st.info("💡 请选择「上传新数据文件」模式，上传3个Excel文件。或联系管理员重新生成预加载数据。")
+                return
+            except Exception as e:
+                st.error(f"❌ 预加载数据读取失败：{e}")
+                st.info("💡 请尝试选择「上传新数据文件」模式。")
+                return
+        else:
+            data = load_all_data(sales_file, profit_file, expense_file)
+            if not data['success']:
+                st.error(f"❌ 数据加载失败：{data.get('error', '未知错误')}")
+                st.info("💡 请检查上传的Excel文件格式是否正确，确认包含所需的sheet名称。")
+                return
+            indicators = calculate_indicators(data)
     
     # ========== 一、核心经营指标 ==========
     st.markdown('<div class="section-title">📈 一、整体经营情况</div>', unsafe_allow_html=True)
